@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Alert Details</title>
+  </head>
+  <body>
+    <h1>{{ alert.rule.description }}</h1>
+    <p><b>Summary:</b> {{ summary }}</p>
+
+    {% if playbook %}
+    <h2>Playbook: {{ playbook.name }}</h2>
+    <p>Severity: {{ playbook.severity }}</p>
+    <h3>Triage Steps</h3>
+    <ul>
+      {% for step in playbook.triage_steps %}
+      <li>{{ step }}</li>
+      {% endfor %}
+    </ul>
+    <h3>Recommended Actions</h3>
+    <ul>
+      {% for action in playbook.recommended_actions %}
+      <li>{{ action }}</li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p>No playbook found for this alert.</p>
+    {% endif %} {% if intel %}
+    <h2>Threat Intelligence</h2>
+    {% if intel.error %}
+    <p>Error: {{ intel.error }}</p>
+    {% else %}
+    <p><b>Abuse Confidence Score:</b> {{ intel.abuseConfidenceScore }}%</p>
+    <p><b>Country:</b> {{ intel.countryCode }}</p>
+    <p><b>Total Reports:</b> {{ intel.totalReports }}</p>
+    {% endif %} {% endif %}
+  </body>
+</html>

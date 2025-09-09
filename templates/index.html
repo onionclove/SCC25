@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>IR Assistant Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" type="text/css" href="/static/style.css" />
+  </head>
+  <body>
+    <h1>Incident Response Dashboard</h1>
+
+    <div class="container">
+      <!-- Active Alerts -->
+      <div class="card">
+        <h2>Active Alerts</h2>
+        <ul>
+          {% for alert in alerts %}
+          <li>
+            <a href="/alert/{{ loop.index0 }}">
+              {{ alert.rule.description }} ({{ alert.timestamp }})
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <!-- Severity Chart -->
+      <div class="card">
+        <h2>Alert Severity Distribution</h2>
+        <canvas id="severityChart"></canvas>
+      </div>
+
+      <!-- Top Source IPs -->
+      <div class="card">
+        <h2>Top Source IPs</h2>
+        <canvas id="ipChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Chart.js Scripts -->
+    <script>
+      // Severity Chart
+      const severityCounts = {{ severity_counts | tojson | safe }};
+      const ctx = document.getElementById("severityChart").getContext("2d");
+      new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: ["Low", "Medium", "High", "Critical"],
+          datasets: [{
+            label: "Alert Count",
+            data: [
+              severityCounts.low,
+              severityCounts.medium,
+              severityCounts.high,
+              severityCounts.critical
+            ],
+            backgroundColor: ["green", "yellow", "orange", "red"]
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } }
+        }
+      });
+
+      // IP Chart
+      const ipCounts = {{ ip_counts | tojson | safe }};
+      const ipLabels = Object.keys(ipCounts);
+      const ipValues = Object.values(ipCounts);
+
+      const ipCtx = document.getElementById("ipChart").getContext("2d");
+      new Chart(ipCtx, {
+        type: "pie",
+        data: {
+          labels: ipLabels,
+          datasets: [{
+            label: "Alerts per IP",
+            data: ipValues,
+            backgroundColor: [
+              "red", "blue", "green", "orange", "purple", "cyan"
+            ]
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: "bottom" } }
+        }
+      });
+    </script>
+  </body>
+</html>

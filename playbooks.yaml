@@ -1,0 +1,29 @@
+- name: "SSH Brute Force"
+  trigger: "ssh brute force"
+  severity: "high"
+  triage_steps:
+    - "Check failed login count from srcip"
+    - "Confirm no successful login"
+  recommended_actions:
+    - "Block IP on firewall"
+    - "Escalate if >100 attempts in 5 mins"
+
+- name: "Suspicious PowerShell"
+  trigger: "powershell"
+  severity: "critical"
+  triage_steps:
+    - "Review executed PowerShell command"
+    - "Check persistence mechanisms"
+  recommended_actions:
+    - "Terminate process"
+    - "Scan system with AV"
+
+- name: "Phishing Login Attempt"
+  trigger: "phishing"
+  severity: "medium"
+  triage_steps:
+    - "Review login attempts for affected user"
+    - "Check geo-location of login source"
+  recommended_actions:
+    - "Force password reset for user"
+    - "Enable MFA if not present"
