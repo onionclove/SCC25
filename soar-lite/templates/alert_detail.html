@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alert #{{ alert.id }} - SOAR-Lite</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" rel="stylesheet">
+    <style>
+        .info-card {
+            transition: transform 0.2s;
+        }
+        .info-card:hover {
+            transform: translateY(-2px);
+        }
+        .risk-score {
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+        .correlation-item:hover {
+            background-color: #f8f9fa;
+            cursor: pointer;
+        }
+        .raw-json {
+            background-color: #f8f9fa;
+            border-radius: 0.375rem;
+            font-size: 0.875em;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('dashboard') }}">
+                <i class="fas fa-shield-alt"></i> SOAR-Lite Dashboard
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="{{ url_for('dashboard') }}">
+                    <i class="fas fa-arrow-left"></i> Back to Dashboard
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else 'success' if category == 'success' else 'info' }} alert-dismissible fade show">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Alert Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card border-{{ alert.classification.color }}">
+                    <div class="card-header bg-{{ alert.classification.color }} text-white">
+                        <h4 class="mb-0">
+                            <i class="fas fa-exclamation-triangle"></i> Alert #{{ alert.id }}
+                            <span class="badge bg-light text-dark ms-2">{{ alert.classification.severity }}</span>
+                        </h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6 class="text-muted">Rule Description</h6>
+                                <p class="mb-2">{{ alert.rule.description }}</p>
+                                
+                                <h6 class="text-muted">Timestamp</h6>
+                                <p class="mb-2"><i class="fas fa-clock"></i> {{ alert.timestamp }}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <h6 class="text-muted">Source IP</h6>
+                                <p class="mb-2"><code>{{ alert.source_ip }}</code></p>
+                                
+                                <h6 class="text-muted">Agent</h6>
+                                <p class="mb-2">{{ alert.agent }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Threat Intelligence -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card info-card h-100">
+                    <div class="card-header bg-warning text-white">
+                        <h6 class="mb-0"><i class="fas fa-crosshairs"></i> Threat Analysis</h6>
+                    </div>
+                    <div class="card-body">
+                        <h6 class="text-muted">Attack Type</h6>
+                        <p class="mb-2"><strong>{{ alert.enrichment.attack_type }}</strong></p>
+                        
+                        <h6 class="text-muted">Suspected Motive</h6>
+                        <p class="mb-2">{{ alert.enrichment.motive }}</p>
+                        
+                        <h6 class="text-muted">Target Service</h6>
+                        <p class="mb-0">{{ alert.enrichment.target_service }}</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card info-card h-100">
+                    <div class="card-header bg-info text-white">
+                        <h6 class="mb-0"><i class="fas fa-tachometer-alt"></i> Risk Assessment</h6>
+                    </div>
+                    <div class="card-body text-center">
+                        <h6 class="text-muted">Risk Score</h6>
+                        <div class="risk-score text-{% if alert.enrichment.risk_score >= 10 %}danger{% elif alert.enrichment.risk_score >= 7 %}warning{% else %}info{% endif %}">
+                            {{ "%.1f"|format(alert.enrichment.risk_score) }}/15
+                        </div>
+                        <div class="progress mt-3">
+                            <div class="progress-bar bg-{% if alert.enrichment.risk_score >= 10 %}danger{% elif alert.enrichment.risk_score >= 7 %}warning{% else %}info{% endif %}" 
+                                 role="progressbar" 
+                                 style="width: {{ (alert.enrichment.risk_score / 15 * 100)|round }}%">
+                            </div>
+                        </div>
+                        
+                        <h6 class="text-muted mt-3">Rule Level</h6>
+                        <span class="badge bg-{% if alert.rule.level >= 10 %}danger{% elif alert.rule.level >= 7 %}warning{% elif alert.rule.level >= 5 %}info{% else %}secondary{% endif %} fs-6">
+                            {{ alert.rule.level }}
+                        </span>
+                        
+                        {% if alert.enrichment.target_user != 'Unknown' %}
+                        <h6 class="text-muted mt-3">Target User</h6>
+                        <code>{{ alert.enrichment.target_user }}</code>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card info-card h-100">
+                    <div class="card-header bg-success text-white">
+                        <h6 class="mb-0"><i class="fas fa-shield-alt"></i> Recommendations</h6>
+                    </div>
+                    <div class="card-body">
+                        {% if alert.enrichment.recommendations %}
+                            <ul class="list-unstyled">
+                                {% for recommendation in alert.enrichment.recommendations %}
+                                <li class="mb-2">
+                                    <i class="fas fa-check-circle text-success"></i> {{ recommendation }}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <p class="text-muted">No specific recommendations available</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rule Details and Raw Data -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="fas fa-cog"></i> Rule Information</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-6">
+                                <h6 class="text-muted">Rule ID</h6>
+                                <p class="mb-2">{{ alert.rule.id or 'N/A' }}</p>
+                            </div>
+                            <div class="col-6">
+                                <h6 class="text-muted">Rule Level</h6>
+                                <p class="mb-2">{{ alert.rule.level or 'N/A' }}</p>
+                            </div>
+                        </div>
+                        
+                        {% if alert.rule.groups %}
+                        <h6 class="text-muted">Rule Groups</h6>
+                        <div class="mb-2">
+                            {% for group in alert.rule.groups %}
+                                <span class="badge bg-secondary me-1">{{ group }}</span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        
+                        {% if alert.rule.firedtimes %}
+                        <h6 class="text-muted">Fired Times</h6>
+                        <p class="mb-0">{{ alert.rule.firedtimes }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="fas fa-database"></i> Alert Data</h6>
+                    </div>
+                    <div class="card-body">
+                        {% if alert.data %}
+                            {% for key, value in alert.data.items() %}
+                                {% if key not in ['srcip', 'src_ip', 'dstip', 'dst_ip'] or loop.index <= 8 %}
+                                <div class="row mb-2">
+                                    <div class="col-4">
+                                        <strong>{{ key }}:</strong>
+                                    </div>
+                                    <div class="col-8">
+                                        {% if value|string|length > 50 %}
+                                            <span title="{{ value }}">{{ value|string|truncate(50) }}</span>
+                                        {% else %}
+                                            {{ value }}
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% endif %}
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-muted">No additional data available</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- IP Correlation -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="fas fa-link"></i> IP Correlation Analysis
+                            <span class="badge bg-info">{{ alert.correlated_alerts|length }} related alerts</span>
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        {% if alert.correlated_alerts %}
+                            <p class="mb-3">
+                                <i class="fas fa-info-circle"></i> 
+                                Found {{ alert.correlated_alerts|length }} other alerts involving IP address <code>{{ alert.source_ip }}</code>
+                            </p>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Alert ID</th>
+                                            <th>Timestamp</th>
+                                            <th>Rule Description</th>
+                                            <th>Level</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for corr_alert in alert.correlated_alerts %}
+                                        <tr class="correlation-item" onclick="window.location.href='{{ url_for('alert_detail', alert_id=corr_alert.id) }}'">
+                                            <td><strong>#{{ corr_alert.id }}</strong></td>
+                                            <td>{{ corr_alert.timestamp }}</td>
+                                            <td>{{ corr_alert.rule_description|truncate(60) }}</td>
+                                            <td>
+                                                <span class="badge bg-{% if corr_alert.rule_level >= 10 %}danger{% elif corr_alert.rule_level >= 7 %}warning{% elif corr_alert.rule_level >= 5 %}info{% else %}secondary{% endif %}">
+                                                    {{ corr_alert.rule_level }}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <a href="{{ url_for('alert_detail', alert_id=corr_alert.id) }}" class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation()">
+                                                    View
+                                                </a>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="text-center py-3">
+                                <i class="fas fa-search fa-2x text-muted mb-2"></i>
+                                <p class="text-muted">No correlated alerts found for this IP address</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Raw Alert Data -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="fas fa-code"></i> Raw Alert Data
+                            <button class="btn btn-sm btn-outline-secondary float-end" onclick="toggleRawData()">
+                                <i class="fas fa-eye" id="toggle-icon"></i> <span id="toggle-text">Show</span>
+                            </button>
+                        </h6>
+                    </div>
+                    <div class="card-body" id="raw-data-container" style="display: none;">
+                        <pre class="raw-json"><code class="language-json">{{ alert.raw_alert }}</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    
+    <script>
+        function toggleRawData() {
+            const container = document.getElementById('raw-data-container');
+            const icon = document.getElementById('toggle-icon');
+            const text = document.getElementById('toggle-text');
+            
+            if (container.style.display === 'none') {
+                container.style.display = 'block';
+                icon.className = 'fas fa-eye-slash';
+                text.textContent = 'Hide';
+            } else {
+                container.style.display = 'none';
+                icon.className = 'fas fa-eye';
+                text.textContent = 'Show';
+            }
+        }
+    </script>
+</body>
+</html>
