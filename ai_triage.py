@@ -5,3 +5,4 @@ def triage_summary(alert):
     src_ip = alert.get("data", {}).get("srcip", "N/A")
 
     return f"Alert from {agent}: {rule_desc}. Source IP: {src_ip}"
+ 

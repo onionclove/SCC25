@@ -1,5 +1,4 @@
 #basic app to be updated
-
 from flask import Flask, render_template
 from collections import Counter
 from wazuh_client import get_alerts
