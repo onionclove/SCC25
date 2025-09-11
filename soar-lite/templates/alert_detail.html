@@ -159,6 +159,136 @@
             </div>
         </div>
 
+        <!-- VirusTotal Intelligence -->
+        {% if alert.enrichment.virustotal or alert.enrichment.virustotal_url or alert.enrichment.virustotal_hash %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-dark text-white">
+                        <h6 class="mb-0">
+                            <i class="fab fa-viacoin"></i> VirusTotal Intelligence
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            {% if alert.enrichment.virustotal %}
+                            <div class="col-md-4">
+                                <h6 class="text-muted">IP Address: {{ alert.enrichment.virustotal.address }}</h6>
+                                <div class="row">
+                                    <div class="col-6">
+                                        <span class="badge bg-danger">Malicious: {{ alert.enrichment.virustotal.malicious }}</span>
+                                    </div>
+                                    <div class="col-6">
+                                        <span class="badge bg-warning text-dark">Suspicious: {{ alert.enrichment.virustotal.suspicious }}</span>
+                                    </div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-6">
+                                        <span class="badge bg-success">Harmless: {{ alert.enrichment.virustotal.harmless }}</span>
+                                    </div>
+                                    <div class="col-6">
+                                        <span class="badge bg-secondary">Undetected: {{ alert.enrichment.virustotal.undetected }}</span>
+                                    </div>
+                                </div>
+                                <div class="mt-2">
+                                    <strong>Reputation:</strong> 
+                                    <span class="badge bg-{% if alert.enrichment.virustotal.reputation == 'malicious' %}danger{% elif alert.enrichment.virustotal.reputation == 'suspicious' %}warning{% else %}success{% endif %}">
+                                        {{ alert.enrichment.virustotal.reputation|title }}
+                                    </span>
+                                </div>
+                                {% if alert.enrichment.virustotal.categories %}
+                                <div class="mt-2">
+                                    <strong>Categories:</strong><br>
+                                    {% for category, engine in alert.enrichment.virustotal.categories.items() %}
+                                        <span class="badge bg-info me-1">{{ category }}</span>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                                <div class="mt-2">
+                                    <a href="{{ alert.enrichment.virustotal.link }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-external-link-alt"></i> View in VirusTotal
+                                    </a>
+                                </div>
+                            </div>
+                            {% endif %}
+                            
+                            {% if alert.enrichment.virustotal_url %}
+                            <div class="col-md-4">
+                                <h6 class="text-muted">URL Analysis</h6>
+                                <div class="row">
+                                    <div class="col-6">
+                                        <span class="badge bg-danger">Malicious: {{ alert.enrichment.virustotal_url.malicious }}</span>
+                                    </div>
+                                    <div class="col-6">
+                                        <span class="badge bg-warning text-dark">Suspicious: {{ alert.enrichment.virustotal_url.suspicious }}</span>
+                                    </div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-6">
+                                        <span class="badge bg-success">Harmless: {{ alert.enrichment.virustotal_url.harmless }}</span>
+                                    </div>
+                                    <div class="col-6">
+                                        <span class="badge bg-secondary">Undetected: {{ alert.enrichment.virustotal_url.undetected }}</span>
+                                    </div>
+                                </div>
+                                <div class="mt-2">
+                                    <strong>Reputation:</strong> 
+                                    <span class="badge bg-{% if alert.enrichment.virustotal_url.reputation == 'malicious' %}danger{% elif alert.enrichment.virustotal_url.reputation == 'suspicious' %}warning{% else %}success{% endif %}">
+                                        {{ alert.enrichment.virustotal_url.reputation|title }}
+                                    </span>
+                                </div>
+                                <div class="mt-2">
+                                    <a href="{{ alert.enrichment.virustotal_url.link }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-external-link-alt"></i> View in VirusTotal
+                                    </a>
+                                </div>
+                            </div>
+                            {% endif %}
+                            
+                            {% if alert.enrichment.virustotal_hash %}
+                            <div class="col-md-4">
+                                <h6 class="text-muted">File Hash Analysis</h6>
+                                <div class="row">
+                                    <div class="col-6">
+                                        <span class="badge bg-danger">Malicious: {{ alert.enrichment.virustotal_hash.malicious }}</span>
+                                    </div>
+                                    <div class="col-6">
+                                        <span class="badge bg-warning text-dark">Suspicious: {{ alert.enrichment.virustotal_hash.suspicious }}</span>
+                                    </div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-6">
+                                        <span class="badge bg-success">Harmless: {{ alert.enrichment.virustotal_hash.harmless }}</span>
+                                    </div>
+                                    <div class="col-6">
+                                        <span class="badge bg-secondary">Undetected: {{ alert.enrichment.virustotal_hash.undetected }}</span>
+                                    </div>
+                                </div>
+                                <div class="mt-2">
+                                    <strong>Reputation:</strong> 
+                                    <span class="badge bg-{% if alert.enrichment.virustotal_hash.reputation == 'malicious' %}danger{% elif alert.enrichment.virustotal_hash.reputation == 'suspicious' %}warning{% else %}success{% endif %}">
+                                        {{ alert.enrichment.virustotal_hash.reputation|title }}
+                                    </span>
+                                </div>
+                                {% if alert.enrichment.virustotal_hash.file_type %}
+                                <div class="mt-2">
+                                    <strong>File Type:</strong> {{ alert.enrichment.virustotal_hash.file_type }}
+                                </div>
+                                {% endif %}
+                                <div class="mt-2">
+                                    <a href="{{ alert.enrichment.virustotal_hash.link }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-external-link-alt"></i> View in VirusTotal
+                                    </a>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Rule Details and Raw Data -->
         <div class="row mb-4">
             <div class="col-md-6">

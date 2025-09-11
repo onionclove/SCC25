@@ -4,6 +4,11 @@ import os
 from datetime import datetime
 from werkzeug.utils import secure_filename
 import uuid
+import requests
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-in-production'
@@ -16,9 +21,216 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 # Global storage for alerts (in production, use a database)
 alerts_data = []
 
+# VirusTotal API configuration
+VT_API_KEY = os.getenv('virustotal_api')
+VT_BASE_URL = 'https://www.virustotal.com/api/v3'
+VT_HEADERS = {'x-apikey': VT_API_KEY} if VT_API_KEY else {}
+
+# Cache for VirusTotal results to avoid repeated API calls
+vt_cache = {}
+
 def allowed_file(filename):
     """Check if the uploaded file is a JSON file."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() == 'json'
+
+def vt_get_ip_report(ip_address):
+    """
+    Get VirusTotal report for an IP address.
+    
+    Args:
+        ip_address (str): IP address to check
+    
+    Returns:
+        dict: VirusTotal report data or None if not found/error
+    """
+    if not VT_API_KEY or not ip_address or ip_address in ['Unknown', 'None', '']:
+        return None
+    
+    # Check cache first
+    cache_key = f"ip_{ip_address}"
+    if cache_key in vt_cache:
+        return vt_cache[cache_key]
+    
+    try:
+        response = requests.get(
+            f'{VT_BASE_URL}/ip_addresses/{ip_address}',
+            headers=VT_HEADERS,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json().get('data', {})
+            attributes = data.get('attributes', {})
+            stats = attributes.get('last_analysis_stats', {})
+            categories = attributes.get('categories', {})
+            
+            vt_result = {
+                'type': 'ip',
+                'address': ip_address,
+                'malicious': stats.get('malicious', 0),
+                'suspicious': stats.get('suspicious', 0),
+                'harmless': stats.get('harmless', 0),
+                'undetected': stats.get('undetected', 0),
+                'categories': categories,
+                'last_analysis_date': attributes.get('last_analysis_date'),
+                'link': f'https://www.virustotal.com/gui/ip-address/{ip_address}',
+                'reputation': 'malicious' if stats.get('malicious', 0) > 0 else 'suspicious' if stats.get('suspicious', 0) > 0 else 'clean'
+            }
+            
+            # Cache the result
+            vt_cache[cache_key] = vt_result
+            return vt_result
+            
+        elif response.status_code == 404:
+            # IP not found in VirusTotal
+            vt_result = {
+                'type': 'ip',
+                'address': ip_address,
+                'malicious': 0,
+                'suspicious': 0,
+                'harmless': 0,
+                'undetected': 0,
+                'categories': {},
+                'reputation': 'unknown',
+                'link': f'https://www.virustotal.com/gui/ip-address/{ip_address}',
+                'not_found': True
+            }
+            vt_cache[cache_key] = vt_result
+            return vt_result
+            
+    except Exception as e:
+        print(f"Error fetching VirusTotal data for IP {ip_address}: {e}")
+    
+    return None
+
+def vt_get_url_report(url):
+    """
+    Get VirusTotal report for a URL.
+    
+    Args:
+        url (str): URL to check
+    
+    Returns:
+        dict: VirusTotal report data or None if not found/error
+    """
+    if not VT_API_KEY or not url or url in ['Unknown', 'None', '']:
+        return None
+    
+    # Check cache first
+    cache_key = f"url_{url}"
+    if cache_key in vt_cache:
+        return vt_cache[cache_key]
+    
+    try:
+        # First, submit URL for analysis if needed
+        submit_response = requests.post(
+            f'{VT_BASE_URL}/urls',
+            headers=VT_HEADERS,
+            data={'url': url},
+            timeout=10
+        )
+        
+        if submit_response.status_code == 200:
+            analysis_id = submit_response.json().get('data', {}).get('id', '')
+            
+            # Get the analysis results
+            analysis_response = requests.get(
+                f'{VT_BASE_URL}/analyses/{analysis_id}',
+                headers=VT_HEADERS,
+                timeout=10
+            )
+            
+            if analysis_response.status_code == 200:
+                data = analysis_response.json().get('data', {})
+                attributes = data.get('attributes', {})
+                stats = attributes.get('stats', {})
+                
+                vt_result = {
+                    'type': 'url',
+                    'url': url,
+                    'malicious': stats.get('malicious', 0),
+                    'suspicious': stats.get('suspicious', 0),
+                    'harmless': stats.get('harmless', 0),
+                    'undetected': stats.get('undetected', 0),
+                    'reputation': 'malicious' if stats.get('malicious', 0) > 0 else 'suspicious' if stats.get('suspicious', 0) > 0 else 'clean',
+                    'link': f'https://www.virustotal.com/gui/url/{url}'
+                }
+                
+                # Cache the result
+                vt_cache[cache_key] = vt_result
+                return vt_result
+                
+    except Exception as e:
+        print(f"Error fetching VirusTotal data for URL {url}: {e}")
+    
+    return None
+
+def vt_get_hash_report(file_hash):
+    """
+    Get VirusTotal report for a file hash.
+    
+    Args:
+        file_hash (str): File hash (MD5, SHA1, or SHA256)
+    
+    Returns:
+        dict: VirusTotal report data or None if not found/error
+    """
+    if not VT_API_KEY or not file_hash or file_hash in ['Unknown', 'None', '']:
+        return None
+    
+    # Check cache first
+    cache_key = f"hash_{file_hash}"
+    if cache_key in vt_cache:
+        return vt_cache[cache_key]
+    
+    try:
+        response = requests.get(
+            f'{VT_BASE_URL}/files/{file_hash}',
+            headers=VT_HEADERS,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json().get('data', {})
+            attributes = data.get('attributes', {})
+            stats = attributes.get('last_analysis_stats', {})
+            
+            vt_result = {
+                'type': 'file',
+                'hash': file_hash,
+                'malicious': stats.get('malicious', 0),
+                'suspicious': stats.get('suspicious', 0),
+                'harmless': stats.get('harmless', 0),
+                'undetected': stats.get('undetected', 0),
+                'file_type': attributes.get('type_description', 'Unknown'),
+                'reputation': 'malicious' if stats.get('malicious', 0) > 0 else 'suspicious' if stats.get('suspicious', 0) > 0 else 'clean',
+                'link': f'https://www.virustotal.com/gui/file/{file_hash}'
+            }
+            
+            # Cache the result
+            vt_cache[cache_key] = vt_result
+            return vt_result
+            
+        elif response.status_code == 404:
+            # Hash not found in VirusTotal
+            vt_result = {
+                'type': 'file',
+                'hash': file_hash,
+                'malicious': 0,
+                'suspicious': 0,
+                'harmless': 0,
+                'undetected': 0,
+                'reputation': 'unknown',
+                'link': f'https://www.virustotal.com/gui/file/{file_hash}',
+                'not_found': True
+            }
+            vt_cache[cache_key] = vt_result
+            return vt_result
+            
+    except Exception as e:
+        print(f"Error fetching VirusTotal data for hash {file_hash}: {e}")
+    
+    return None
 
 def classify_alert(alert_data):
     """
@@ -175,6 +387,53 @@ def enrich_alert(alert_data):
             enrichment['recommendations'].append('Verify file integrity')
         
         # Cap risk score at 15
+        enrichment['risk_score'] = min(enrichment['risk_score'], 15)
+        
+        # VirusTotal enrichment
+        source_ip = get_source_ip(alert_data)
+        vt_data = vt_get_ip_report(source_ip)
+        
+        if vt_data:
+            enrichment['virustotal'] = vt_data
+            
+            # Adjust risk score based on VirusTotal reputation
+            if vt_data['reputation'] == 'malicious':
+                enrichment['risk_score'] = min(15, enrichment['risk_score'] + 3)
+                enrichment['recommendations'].append('BLOCK IP: VirusTotal indicates malicious activity')
+            elif vt_data['reputation'] == 'suspicious':
+                enrichment['risk_score'] = min(15, enrichment['risk_score'] + 1.5)
+                enrichment['recommendations'].append('MONITOR IP: VirusTotal indicates suspicious activity')
+            
+            # Add VT categories if available
+            if vt_data.get('categories'):
+                enrichment['vt_categories'] = vt_data['categories']
+        
+        # Check for other observables in the alert data
+        data = alert_data.get('data', {})
+        
+        # Look for URLs in the data
+        for key, value in data.items():
+            if isinstance(value, str) and ('http://' in value or 'https://' in value):
+                url_vt = vt_get_url_report(value)
+                if url_vt:
+                    enrichment['virustotal_url'] = url_vt
+                    if url_vt['reputation'] == 'malicious':
+                        enrichment['risk_score'] = min(15, enrichment['risk_score'] + 2)
+                        enrichment['recommendations'].append('BLOCK URL: VirusTotal indicates malicious URL')
+                    break
+        
+        # Look for file hashes in the data
+        for key, value in data.items():
+            if isinstance(value, str) and len(value) in [32, 40, 64] and all(c in '0123456789abcdefABCDEF' for c in value):
+                hash_vt = vt_get_hash_report(value)
+                if hash_vt:
+                    enrichment['virustotal_hash'] = hash_vt
+                    if hash_vt['reputation'] == 'malicious':
+                        enrichment['risk_score'] = min(15, enrichment['risk_score'] + 4)
+                        enrichment['recommendations'].append('QUARANTINE FILE: VirusTotal indicates malicious file hash')
+                    break
+        
+        # Cap risk score again after VT adjustments
         enrichment['risk_score'] = min(enrichment['risk_score'], 15)
         
     except Exception as e:
@@ -372,6 +631,23 @@ def api_stats():
             stats['low_alerts'] += 1
     
     return jsonify(stats)
+
+@app.route('/api/virustotal/<int:alert_id>/<observable_type>/<observable_value>')
+def api_virustotal_lookup(alert_id, observable_type, observable_value):
+    """API endpoint for on-demand VirusTotal lookups."""
+    if alert_id >= len(alerts_data):
+        return jsonify({'error': 'Alert not found'}), 404
+    
+    if observable_type == 'ip':
+        result = vt_get_ip_report(observable_value)
+    elif observable_type == 'url':
+        result = vt_get_url_report(observable_value)
+    elif observable_type == 'hash':
+        result = vt_get_hash_report(observable_value)
+    else:
+        return jsonify({'error': 'Invalid observable type'}), 400
+    
+    return jsonify(result) if result else jsonify({'error': 'No VirusTotal data available'}), 404
 
 if __name__ == '__main__':
     app.run(debug=True, host='127.0.0.1', port=5000)
