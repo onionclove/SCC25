@@ -1082,5 +1082,38 @@ def api_virustotal_lookup(alert_id, observable_type, observable_value):
     
     return jsonify(result) if result else jsonify({'error': 'No VirusTotal data available'}), 404
 
+@app.route('/api/classify', methods=['POST'])
+def classify_alert():
+    """
+    Classify an input based on a decision tree.
+    Expects JSON input with answers to structured questions.
+    """
+    try:
+        data = request.get_json(force=True, silent=False)
+        if not data:
+            return jsonify({"error": "Invalid or missing JSON input"}), 400
+
+        # Decision tree logic
+        def decision_tree(answers):
+            # Example decision tree logic
+            if answers.get('automated_system') == 'yes':
+                if answers.get('malicious_activity') == 'yes':
+                    return "Incident"
+                else:
+                    return "Alert"
+            else:
+                if answers.get('assets_affected', 0) > 5:
+                    return "Incident"
+                elif answers.get('malicious_activity') == 'no':
+                    return "Event"
+                else:
+                    return "Alert"
+
+        classification = decision_tree(data)
+        return jsonify({"classification": classification}), 200
+
+    except Exception as e:
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
 if __name__ == '__main__':
     app.run(debug=True, host='127.0.0.1', port=5000)
