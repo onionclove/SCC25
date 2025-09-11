@@ -7,6 +7,12 @@ import uuid
 import requests
 from dotenv import load_dotenv
 
+# Optional Gemini import (installed via requirements)
+try:
+    import google.generativeai as genai
+except Exception:
+    genai = None
+
 # Load environment variables
 load_dotenv()
 
@@ -28,6 +34,78 @@ VT_HEADERS = {'x-apikey': VT_API_KEY} if VT_API_KEY else {}
 
 # Cache for VirusTotal results to avoid repeated API calls
 vt_cache = {}
+
+# Gemini configuration
+GEMINI_API_KEY = os.getenv('gemini_api')
+GEMINI_MODEL_NAME = os.getenv('gemini_model', 'gemini-1.5-flash')
+
+def init_gemini_client():
+    """Configure the Gemini client if available and API key is set."""
+    if not genai or not GEMINI_API_KEY:
+        return None
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        return genai.GenerativeModel(GEMINI_MODEL_NAME)
+    except Exception as e:
+        print(f"Error initializing Gemini client: {e}")
+        return None
+
+def build_playbook_prompt(alerts_subset):
+    """Create a structured prompt for Gemini to generate an incident response playbook.
+
+    The model should output concise, ordered steps with rationale, severity, owners, and checks.
+    """
+    sample = {
+        "context": "You are a SOC runbook assistant. Generate a practical, step-by-step incident response playbook for the provided Wazuh alerts. Be concise and actionable.",
+        "output_format": {
+            "title": "string",
+            "summary": "3-5 bullet overview",
+            "severity": "Low|Medium|High|Critical",
+            "assumptions": ["short bullets"],
+            "prerequisites": ["tools, accesses, data needed"],
+            "playbook_steps": [
+                {"id": 1, "name": "Step name", "owner": "SOC|IR|IT", "goal": "what it achieves", "commands": ["example commands"], "evidence_to_collect": ["artifacts"], "success_criteria": ["verifications"], "rollback": ["if needed"], "estimated_time_min": 5}
+            ],
+            "containment_actions": ["bullets"],
+            "eradication_actions": ["bullets"],
+            "recovery_actions": ["bullets"],
+            "post_incident": ["lessons learned, tuning"]
+        }
+    }
+    return (
+        "Generate a JSON playbook for these Wazuh alerts. Consider rule.level, rule.description, rule.groups, timestamps, IPs, users. "
+        "Prefer concrete Linux/Windows commands when relevant. Keep steps minimal but complete."
+        f"\n\nAlerts JSON (truncated to 25):\n{json.dumps(alerts_subset, indent=2) }\n\n"
+        f"Respond ONLY with JSON following this schema (no markdown fences):\n{json.dumps(sample['output_format'], indent=2)}"
+    )
+
+def generate_playbook_from_alerts(all_alerts):
+    """Use Gemini to generate a playbook from current alerts."""
+    model = init_gemini_client()
+    if not model:
+        return {"error": "Gemini not configured. Ensure google-generativeai is installed and gemini_api is set in .env"}
+    if not all_alerts:
+        return {"error": "No alerts loaded"}
+
+    # Take top N by rule level for stronger signal
+    try:
+        sorted_alerts = sorted(all_alerts, key=lambda a: a.get('rule', {}).get('level', 0), reverse=True)
+        subset = sorted_alerts[:25]
+    except Exception:
+        subset = all_alerts[:25]
+
+    prompt = build_playbook_prompt(subset)
+    try:
+        response = model.generate_content(prompt)
+        text = response.text if hasattr(response, 'text') else str(response)
+        # Try to parse JSON if the model complied
+        try:
+            return json.loads(text)
+        except Exception:
+            return {"raw": text}
+    except Exception as e:
+        print(f"Gemini generation error: {e}")
+        return {"error": f"Gemini error: {e}"}
 
 def allowed_file(filename):
     """Check if the uploaded file is a JSON file."""
@@ -631,6 +709,18 @@ def api_stats():
             stats['low_alerts'] += 1
     
     return jsonify(stats)
+
+@app.route('/actions', methods=['GET'])
+def actions_page():
+    """Render actions page with option to generate playbook."""
+    return render_template('actions.html', total_alerts=len(alerts_data))
+
+@app.route('/api/generate_playbook', methods=['POST'])
+def api_generate_playbook():
+    """API to generate a playbook via Gemini from loaded alerts."""
+    result = generate_playbook_from_alerts(alerts_data)
+    status = 200 if 'error' not in result else 400
+    return jsonify(result), status
 
 @app.route('/api/virustotal/<int:alert_id>/<observable_type>/<observable_value>')
 def api_virustotal_lookup(alert_id, observable_type, observable_value):

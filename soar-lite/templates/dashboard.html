@@ -36,6 +36,9 @@
                 <a class="nav-link" href="{{ url_for('upload_file') }}">
                     <i class="fas fa-upload"></i> Upload Alerts
                 </a>
+                <a class="nav-link" href="{{ url_for('actions_page') }}">
+                    <i class="fas fa-bolt"></i> Actions
+                </a>
                 {% if total_alerts > 0 %}
                 <a class="nav-link" href="{{ url_for('clear_alerts') }}" onclick="return confirm('Are you sure you want to clear all alerts?')">
                     <i class="fas fa-trash"></i> Clear All
@@ -149,7 +152,7 @@
                             </thead>
                             <tbody>
                                 {% for alert in alerts %}
-                                <tr class="alert-row" onclick="window.location.href='{{ url_for('alert_detail', alert_id=alert.id) }}'">
+                                <tr class="alert-row" role="button" data-url="{{ url_for('alert_detail', alert_id=alert.id) }}">
                                     <td><strong>#{{ alert.id }}</strong></td>
                                     <td>{{ alert.timestamp }}</td>
                                     <td>
@@ -192,5 +195,13 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.querySelectorAll('.alert-row').forEach(function(row){
+            row.addEventListener('click', function(){
+                var url = this.getAttribute('data-url');
+                if (url) { window.location.href = url; }
+            });
+        });
+    </script>
 </body>
 </html>
