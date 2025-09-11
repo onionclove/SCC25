@@ -112,17 +112,21 @@
                             <option value="no">No</option>
                         </select>
                     </div>
+                    <!--
                     <div class="col-12">
                         <label for="content" class="form-label">Your Content</label>
                         <textarea id="content" name="content" class="form-control" rows="6" placeholder="Paste or type the answers to your questions here..."></textarea>
                     </div>
+                    -->
                     <div class="col-12 d-flex gap-2">
                         <button type="submit" class="btn btn-success" id="submit-gemini">
                             <i class="fas fa-magic"></i> Generate Playbook
                         </button>
+                        <!--
                         <button type="button" class="btn btn-outline-secondary" id="clear-gemini">
                             <i class="fas fa-eraser"></i> Clear
                         </button>
+                        -->
                     </div>
                 </form>
 
@@ -187,7 +191,7 @@
 
         if (clearBtn) {
             clearBtn.addEventListener('click', () => {
-                contentEl.value = '';
+                if (contentEl) contentEl.value = '';
                 geminiResult.style.display = 'none';
                 geminiAlert.classList.add('d-none');
                 geminiResultJson.textContent = '';
@@ -202,7 +206,7 @@
 
                 const payload = {
                     connect: connectSel.value,
-                    content: contentEl.value,
+                    content: contentEl ? contentEl.value : '',
                     region: regionEl.value,
                     industry: industryEl.value,
                     role: roleEl.value,
@@ -220,9 +224,16 @@
 
                 // Otherwise call backend to reach Gemini
                 const submitBtn = document.getElementById('submit-gemini');
-                submitBtn.disabled = true;
-                const original = submitBtn.innerHTML;
-                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                }
+                const original = submitBtn ? submitBtn.innerHTML : '';
+                if (submitBtn) {
+                    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+                }
+                // Show immediate feedback
+                geminiResult.style.display = 'block';
+                showAlert('Submitting to Gemini...', 'info');
                 try {
                     const res = await fetch("{{ url_for('api_ask_gemini') }}", {
                         method: 'POST',
@@ -230,7 +241,6 @@
                         body: JSON.stringify(payload)
                     });
                     const data = await res.json();
-                    geminiResult.style.display = 'block';
                     if (!res.ok) {
                         showAlert(data.error || 'Request failed', 'danger');
                     } else {
@@ -238,15 +248,62 @@
                     }
                     showResult(data);
                 } catch (err) {
-                    geminiResult.style.display = 'block';
                     showAlert('Network error while contacting backend.', 'danger');
                     showResult({ error: String(err) });
                 } finally {
-                    submitBtn.disabled = false;
-                    submitBtn.innerHTML = original;
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = original;
+                    }
                 }
             });
         }
+
+        // Auto-populate from query string and auto-submit if params provided
+        (function initFromQuery() {
+            if (!geminiForm) return;
+            const params = new URLSearchParams(window.location.search);
+            const qp = {
+                connect: params.get('connect'),
+                region: params.get('region'),
+                industry: params.get('industry'),
+                role: params.get('role'),
+                critical: params.get('critical'),
+                has_team: params.get('has_team')
+            };
+            // Apply values if present
+            if (qp.connect && connectSel) connectSel.value = qp.connect;
+            if (qp.region && regionEl) regionEl.value = qp.region;
+            if (qp.industry && industryEl) industryEl.value = qp.industry;
+            if (qp.role && roleEl) roleEl.value = qp.role;
+            if (qp.critical && criticalEl) criticalEl.value = qp.critical;
+            if (qp.has_team && hasTeamEl) hasTeamEl.value = qp.has_team;
+
+            // If at least one of the key params present, auto submit
+            const hasAny = Object.values(qp).some(v => v !== null);
+            if (hasAny) {
+                // Defer to ensure DOM ready
+                setTimeout(() => {
+                    // If user explicitly set connect=no, show local result without backend
+                    if (connectSel && connectSel.value === 'no') {
+                        geminiResult.style.display = 'block';
+                        showAlert('You selected No. Skipping Gemini call.', 'warning');
+                        showResult({ skipped: true, echo: { content: (contentEl ? contentEl.value : '') } });
+                    } else {
+                        // Show a notice so user sees activity
+                        geminiResult.style.display = 'block';
+                        showAlert('Submitting to Gemini with URL parameters...', 'info');
+                        // Prefer requestSubmit, fallback to dispatch submit event
+                        if (typeof geminiForm.requestSubmit === 'function') {
+                            geminiForm.requestSubmit();
+                        } else {
+                            const ev = new Event('submit', { bubbles: true, cancelable: true });
+                            geminiForm.dispatchEvent(ev);
+                        }
+                    }
+                }, 0);
+            }
+        })();
     </script>
 </body>
 </html>

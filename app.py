@@ -7,6 +7,7 @@ import uuid
 import requests
 from dotenv import load_dotenv
 
+
 # Optional Gemini import (installed via requirements)
 try:
     import google.generativeai as genai
@@ -766,6 +767,7 @@ def api_ask_gemini():
         "Do not include markdown fences unless asked. Prefer bullet lists. "
         "If JSON is appropriate, return valid JSON only. "
         "Even when received alerts are too many, return a playbook with instructions consolidate to a few steps."
+        "If the form has 'no' selected for 'Internal IT/Security team available?' option, MAKE SUGGESTIONS FOR NON-TECH PEOPLE."
     )
 
     # Build prompt combining hardcoded guideline, user content, and current alerts
