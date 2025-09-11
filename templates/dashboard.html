@@ -136,6 +136,20 @@
             </div>
             <div class="card-body p-0">
                 {% if alerts %}
+                    <div class="p-3">
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button id="btn-storyboard" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-film"></i> Build Storyboard
+                            </button>
+                            <button id="btn-storyboard-ai" class="btn btn-outline-secondary btn-sm">
+                                <i class="fas fa-wand-magic-sparkles"></i> Polish Titles (AI)
+                            </button>
+                        </div>
+                        <div id="storyboard" class="mt-3" style="display:none;">
+                            <h6 class="mb-2"><i class="fas fa-timeline"></i> Storyboard</h6>
+                            <div id="storyboard-frames" class="row g-3"></div>
+                        </div>
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-hover mb-0">
                             <thead class="table-dark">
@@ -203,6 +217,48 @@
                 if (url) { window.location.href = url; }
             });
         });
+
+        async function fetchStoryboard(ai) {
+            const url = ai ? '{{ url_for('api_storyboard') }}?ai=yes' : '{{ url_for('api_storyboard') }}';
+            const sb = document.getElementById('storyboard');
+            const framesEl = document.getElementById('storyboard-frames');
+            sb.style.display = 'block';
+            framesEl.innerHTML = '<div class="col-12 text-muted">Building storyboard...</div>';
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                const frames = data.frames || [];
+                if (!frames.length) {
+                    framesEl.innerHTML = '<div class="col-12 text-muted">No frames detected. Try uploading more alerts.</div>';
+                    return;
+                }
+                framesEl.innerHTML = '';
+                frames.forEach((f, idx) => {
+                    const card = document.createElement('div');
+                    card.className = 'col-md-4';
+                    card.innerHTML = `
+                        <div class="card h-100">
+                            <div class="card-header">
+                                <strong>${f.title || f.phase}</strong>
+                                <span class="badge bg-secondary ms-2">${f.alert_ids?.length || 0} alerts</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="small text-muted">${f.start} → ${f.end}</div>
+                                <div class="mt-2">${f.caption}</div>
+                                <div class="mt-2"><code>${f.technical}</code></div>
+                                ${Array.isArray(f.alert_ids) && f.alert_ids.length ? `<a href="${window.location.origin + '{{ url_for('alert_detail', alert_id=0) }}'.replace('0', f.alert_ids[0])}" class="btn btn-sm btn-outline-primary mt-2">Open first alert</a>` : ''}
+                            </div>
+                        </div>`;
+                    framesEl.appendChild(card);
+                });
+            } catch (e) {
+                framesEl.innerHTML = '<div class="col-12 text-danger">Failed to build storyboard.</div>';
+            }
+        }
+        const btnSb = document.getElementById('btn-storyboard');
+        const btnSbAi = document.getElementById('btn-storyboard-ai');
+        if (btnSb) btnSb.addEventListener('click', () => fetchStoryboard(false));
+        if (btnSbAi) btnSbAi.addEventListener('click', () => fetchStoryboard(true));
 
         // Fetch VirusTotal reputation for each row's source IP and render badge
         (function initVirusTotalBadges(){

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
 import json
 import os
 from datetime import datetime
@@ -608,6 +608,217 @@ def parse_timestamp(timestamp_str):
         return timestamp_str
     except:
         return 'Unknown'
+
+@app.route('/api/storyboard', methods=['GET'])
+def api_storyboard():
+    """Build an offline-first storyboard from current alerts. Optional Gemini polish via ?ai=yes."""
+    # Phase mapping heuristics
+    PHASES = [
+        ("Reconnaissance", ["web", "scanner", "nmap", "http", "crawl", "recon"]),
+        ("Initial Access", ["authentication_failed", "ssh", "rdp", "login", "phishing"]),
+        ("Execution", ["malware", "process_creation", "command", "powershell", "bash"]),
+        ("Persistence", ["registry_persistence", "autorun", "startup", "persistence"]),
+        ("Privilege Escalation", ["sudo", "su", "token", "kernel", "privilege"]),
+        ("Defense Evasion", ["rootcheck", "policy_monitoring", "tamper", "evasion"]),
+        ("Lateral Movement", ["smb", "winrm", "rpc", "remote", "lateral"]),
+        ("Collection/Exfiltration", ["data_exfiltration", "ftp", "curl", "upload", "exfil"]),
+        ("Impact", ["ransomware", "encryption", "wiper", "ddos", "impact"])
+    ]
+
+    def phase_of(alert):
+        desc = (alert.get('rule', {}).get('description') or '').lower()
+        groups = [str(g).lower() for g in alert.get('rule', {}).get('groups', [])]
+        for name, hints in PHASES:
+            for h in hints:
+                if h in desc or h in groups:
+                    return name
+        level = alert.get('rule', {}).get('level', 0)
+        return "Initial Access" if level >= 6 else "Reconnaissance"
+
+    # Helper time parsing using existing formatter + strict parse
+    from datetime import datetime as _dt, timedelta as _td
+    def _ts(alert):
+        return parse_timestamp(alert.get('timestamp', ''))
+    def _to_dt(s):
+        try:
+            return _dt.strptime(s, '%Y-%m-%d %H:%M:%S')
+        except Exception:
+            return _dt.min
+
+    window = _td(minutes=45)
+    alerts_sorted = sorted(alerts_data, key=lambda a: _to_dt(_ts(a)))
+    clusters = []
+    index_by_alert = {id(a): i for i, a in enumerate(alerts_data)}
+    for a in alerts_sorted:
+        sip = get_source_ip(a)
+        t = _to_dt(_ts(a))
+        if not clusters or clusters[-1]['source_ip'] != sip or (t - clusters[-1]['end']) > window:
+            clusters.append({'source_ip': sip, 'start': t, 'end': t, 'alerts': [], 'phases_count': {}})
+        cl = clusters[-1]
+        cl['end'] = max(cl['end'], t)
+        cl['alerts'].append(index_by_alert[id(a)])
+        ph = phase_of(a)
+        cl['phases_count'][ph] = cl['phases_count'].get(ph, 0) + 1
+
+    frames = []
+    for cl in clusters:
+        top_phase = max(cl['phases_count'].items(), key=lambda kv: kv[1])[0] if cl['phases_count'] else "Reconnaissance"
+        rule_levels = [alerts_data[i].get('rule', {}).get('level', 0) for i in cl['alerts']]
+        caption = f"{top_phase} activity from {cl['source_ip']} across {len(cl['alerts'])} alert(s)."
+        tech = f"Levels min={min(rule_levels) if rule_levels else 0}, max={max(rule_levels) if rule_levels else 0}"
+        frames.append({
+            "source_ip": cl['source_ip'],
+            "start": cl['start'].strftime('%Y-%m-%d %H:%M:%S') if cl['start'] != _dt.min else "Unknown",
+            "end": cl['end'].strftime('%Y-%m-%d %H:%M:%S') if cl['end'] != _dt.min else "Unknown",
+            "phase": top_phase,
+            "caption": caption,
+            "technical": tech,
+            "alert_ids": cl['alerts']
+        })
+
+    result = {"frames": frames, "total_clusters": len(clusters)}
+
+    # Optional Gemini polish (single batched call)
+    if request.args.get('ai', 'no').lower() == 'yes' and frames:
+        model = init_gemini_client()
+        if model:
+            try:
+                prompt = (
+                    "Return a JSON array of short human-friendly titles for these incident frames in the same order. "
+                    "Do not include any explanation, only a JSON array of strings.\n" + json.dumps(frames[:12], indent=2)
+                )
+                resp = model.generate_content(prompt)
+                text = resp.text if hasattr(resp, 'text') else str(resp)
+                try:
+                    titles = json.loads(text)
+                    if isinstance(titles, list):
+                        for i, t in enumerate(titles[:len(frames)]):
+                            if isinstance(t, str):
+                                frames[i]['title'] = t
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+    return jsonify(result)
+
+@app.route('/api/evidence_pack', methods=['POST'])
+def api_evidence_pack():
+    """Create a ZIP evidence pack without external API calls."""
+    body = request.get_json(silent=True) or {}
+    actions_audit = body.get('actions_audit', {})
+    storyboard = body.get('storyboard')
+
+    from io import BytesIO
+    import zipfile, csv
+
+    mem = BytesIO()
+    with zipfile.ZipFile(mem, mode='w', compression=zipfile.ZIP_DEFLATED) as z:
+        # alerts.json
+        z.writestr('alerts.json', json.dumps(alerts_data, indent=2))
+
+        # correlated.csv
+        csv_bytes = BytesIO()
+        writer = csv.writer(csv_bytes)
+        writer.writerow(['source_ip', 'alert_id', 'timestamp', 'rule_description', 'rule_level'])
+        for i, a in enumerate(alerts_data):
+            writer.writerow([
+                get_source_ip(a),
+                i,
+                parse_timestamp(a.get('timestamp', '')),
+                a.get('rule', {}).get('description', ''),
+                a.get('rule', {}).get('level', 0)
+            ])
+        z.writestr('correlated.csv', csv_bytes.getvalue().decode('utf-8', errors='ignore'))
+
+        # storyboard.md (generate if not provided)
+        if not storyboard:
+            # Compute a minimal storyboard locally
+            # Reuse function above by direct call
+            try:
+                sb_frames = api_storyboard().json  # type: ignore
+            except Exception:
+                sb_frames = {"frames": []}
+            storyboard = sb_frames
+        md = ["# Incident Storyboard"]
+        for f in storyboard.get('frames', []):
+            title = f.get('title') or f"{f.get('phase')} from {f.get('source_ip')}"
+            md.append(f"## {title}")
+            md.append(f"- Time: {f.get('start')} → {f.get('end')}")
+            md.append(f"- Summary: {f.get('caption')}")
+            md.append(f"- Technical: {f.get('technical')}")
+            md.append(f"- Alerts: {len(f.get('alert_ids', []))}")
+            md.append("")
+        z.writestr('storyboard.md', "\n".join(md))
+
+        # actions_audit.json
+        z.writestr('actions_audit.json', json.dumps(actions_audit, indent=2))
+
+        # summary.txt
+        counts = {"total": len(alerts_data), "critical": 0, "high": 0, "medium": 0, "low": 0}
+        for a in alerts_data:
+            sev = classify_alert(a)['severity'].lower()
+            if sev in counts:
+                counts[sev] += 1
+        z.writestr('summary.txt', "\n".join([f"{k}: {v}" for k, v in counts.items()]))
+
+        # vt_cache.json (existing cache only)
+        z.writestr('vt_cache.json', json.dumps(vt_cache, indent=2))
+
+    mem.seek(0)
+    filename = f"evidence_pack_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.zip"
+    return send_file(mem, mimetype='application/zip', as_attachment=True, download_name=filename)
+
+@app.route('/api/noise_suggestions', methods=['GET'])
+def api_noise_suggestions():
+    """Return top noisy patterns and simulate muting effect."""
+    from collections import Counter, defaultdict
+
+    def noise_key(a):
+        r = a.get('rule', {})
+        agent = a.get('agent', {}).get('name', 'unknown')
+        return (str(r.get('id', '')), r.get('description', ''), agent)
+
+    counts = Counter()
+    examples = {}
+    severities = defaultdict(list)
+    for i, a in enumerate(alerts_data):
+        k = noise_key(a)
+        counts[k] += 1
+        if k not in examples:
+            examples[k] = i
+        severities[k].append(classify_alert(a)['severity'])
+
+    def score(k, c):
+        sev = severities[k]
+        hi = sum(1 for s in sev if s in ['High', 'Critical'])
+        return (c, -hi)
+
+    ranked = sorted(counts.items(), key=lambda kv: score(kv[0], kv[1]), reverse=True)[:10]
+
+    suggestions = []
+    total = len(alerts_data)
+    for (rule_id, rule_desc, agent), c in ranked:
+        sev_list = severities[(rule_id, rule_desc, agent)]
+        highish = sum(1 for s in sev_list if s in ['High', 'Critical'])
+        if highish > 0:
+            continue
+        xml = f'<rule id="{rule_id}" level="0"><if_agent_name>{agent}</if_agent_name><description>{rule_desc}</description></rule>'
+        projected = total - c
+        suggestions.append({
+            "pattern": {"rule_id": rule_id, "rule_description": rule_desc, "agent": agent},
+            "count": c,
+            "share": round(c / max(total, 1), 3),
+            "wazuh_filter_snippet": xml,
+            "projected_total_after_mute": projected,
+            "example_alert_id": examples[(rule_id, rule_desc, agent)]
+        })
+
+    return jsonify({
+        "total": total,
+        "suggestions": suggestions[:5],
+        "note": "Review carefully before muting; avoid suppressing security-relevant alerts."
+    })
 
 @app.route('/')
 def dashboard():

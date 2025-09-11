@@ -1,0 +1,121 @@
+SOAR-Lite (Root App) - Feature Guide (Presentation Ready)
+========================================================
+
+Scope: This document describes the features in the root app (app.py and templates in ./templates). The ./soar-lite/ folder is out of scope.
+
+Quick Elevator Pitch
+- Audience: Small/Medium Businesses (non-technical) who just got scary security alerts.
+- Value: Turns raw Wazuh alerts into a calm, guided “first 24 hours” experience with tangible outputs.
+- Cost: Offline/serverless first; optional API usage for Gemini and VirusTotal with user-provided keys.
+
+How to Demo in 3 Minutes
+1) Upload sample alerts (Uploads → pick one of ./uploads/sample_alerts*.json).
+2) On Dashboard: Build Storyboard; optionally polish titles with AI.
+3) On Actions: Tick First 24h checklist → Generate Evidence Pack (downloads ZIP) → Show Reduce Noise suggestions.
+
+----------------------------------------
+Core Features
+----------------------------------------
+1) JSON Upload (Upload page)
+- What it does: Accepts a single alert or a list of Wazuh alert JSON objects.
+- Limits: Up to 16 MB per file.
+- UX: Drag-and-drop or file picker; shows file info before upload.
+- Outcome: Alerts are stored in memory for the current session.
+
+2) Dashboard (/) – Security Alerts Overview
+- Summary cards: Total alerts, counts of Critical/High/Medium+Low.
+- Alerts table: ID, Timestamp, Source IP, Agent, Rule Description, Level, and Classification.
+- Row click: Opens alert details. “Details” button available as well.
+- VirusTotal badges: Next to each Source IP, shows reputation (clean/suspicious/malicious) if a VT key is configured and data was fetched. This uses a cache to avoid repeat lookups.
+
+3) Alert Detail (/alert/<id>) – Deep Dive
+- Threat Analysis: Attack type, suspected motive, target service.
+- Risk Assessment: Score out of 15, progress bar, and rule level badge.
+- Recommendations: Clear, actionable next steps.
+- Threat Intel (VT): If available, shows IP/URL/hash stats with reputation badges and links to VT.
+- IP Correlation: Lists other alerts that involve the same source IP, with quick navigation.
+- Raw Data: Toggle to view full original JSON for audit/evidence.
+
+4) Actions Page (/actions) – Human + Technical Guidance
+- Generate Playbook (Gemini): Optional AI playbook generator using currently loaded alerts plus your organization context (region, industry, role, criticality, team availability). Returns either:
+  - JSON/text playbook if Gemini is configured (user-provided API key), or
+  - A local “skipped” echo result when user selects No (no external calls).
+- Privacy-first: A “connect” field lets users choose if data should be sent to Gemini. When set to “No”, nothing is sent; you still get a local result echo.
+
+----------------------------------------
+Standout Additions (Designed to Impress)
+----------------------------------------
+5) Storyboard API (GET /api/storyboard)
+- Purpose: Auto-generate an “incident storyboard” that groups alerts by source IP and time window (45 minutes) and assigns an ATT&CK-like phase (Recon, Initial Access, etc.).
+- Output: Frames with source_ip, time range, phase, human caption, simple technical note, and linked alert IDs.
+- Offline-first: Works entirely without external calls.
+- Optional AI polish: Append ?ai=yes to make a single Gemini call that suggests short, human-friendly titles for up to 12 frames.
+- UI hooks: On the Dashboard, click “Build Storyboard” (offline) and optionally “Polish Titles (AI)”.
+
+6) Evidence Pack Export (POST /api/evidence_pack)
+- Purpose: One-click ZIP for insurers, executives, or regulators.
+- Inputs: Optional JSON body containing:
+  - actions_audit: What the SME checked off in the First 24h checklist (timestamped).
+  - storyboard: Cached storyboard response to embed.
+- Output ZIP includes:
+  - alerts.json: All current alerts.
+  - correlated.csv: Source IP, alert_id, timestamp, rule description/level.
+  - storyboard.md: Human-readable storyboard summary (generated locally if not provided).
+  - actions_audit.json: Checklist state from the browser.
+  - summary.txt: Totals by severity (Critical/High/Medium/Low).
+  - vt_cache.json: Whatever VirusTotal results were already fetched (no new calls).
+- UI hooks: On Actions page, build storyboard (optional) and click “Generate Evidence Pack” to download.
+- External calls: None during export (privacy-friendly).
+
+7) Noise-Kill Simulation (GET /api/noise_suggestions)
+- Purpose: Identify repetitive benign patterns and show how muting them would reduce noise.
+- Method: Groups alerts by (rule.id, rule.description, agent.name). Ranks by frequency while excluding patterns with any High/Critical alerts.
+- Output: Top suggestions with counts, percentage of total, projected total after mute, and a copyable Wazuh filter rule snippet (local_rules.xml-style).
+- Safety: Does not suggest muting anything that contains High/Critical severities.
+- UI hooks: On Actions page, click “Reduce Noise” to see suggestions and open an example alert.
+- External calls: None; fully local.
+
+----------------------------------------
+Design Choices That Help You Win
+----------------------------------------
+- Offline/serverless-first: All marquee features (Storyboard, Evidence Pack, Noise-Kill) work without internet.
+- Minimal API spend: Gemini call is opt-in and batched once for title polish only; VirusTotal is cached and used sparingly.
+- SME empathy: Plain-English captions, risk scores, and a simple checklist so a non-technical owner knows what to do.
+- Tangible outputs: Evidence Pack ZIP and storyboard markdown are practical artifacts for real-world use.
+
+----------------------------------------
+Configuration and Keys
+----------------------------------------
+- .env (not committed):
+  - gemini_api: Your Gemini API key (optional).
+  - gemini_model: Defaults to gemini-1.5-flash (optional override).
+  - virustotal_api: Your VirusTotal key (optional).
+- Behavior without keys:
+  - Dashboard/Detail still work fully.
+  - VT badges will show only when results exist (no background spam).
+  - Gemini buttons gracefully show “not configured” messages or skip.
+
+----------------------------------------
+Routes Summary (Root App Only)
+----------------------------------------
+- GET  /            → Dashboard
+- GET  /upload      → Upload form
+- POST /upload      → Upload and load alerts into session memory
+- GET  /alert/<id>  → Alert detail view
+- GET  /clear       → Clears all loaded alerts
+- GET  /actions     → Actions page (playbook, evidence, noise)
+- GET  /api/stats   → Lightweight stats for dashboard cards
+- POST /api/generate_playbook → Legacy Gemini playbook (kept for compatibility)
+- POST /api/ask_gemini        → New conditional Gemini endpoint (uses org context)
+- GET  /api/virustotal/<id>/ip|url|hash/<value> → On-demand VT lookup with cache
+- GET  /api/storyboard        → Storyboard frames (optional ?ai=yes)
+- POST /api/evidence_pack     → Evidence pack ZIP (no external calls)
+- GET  /api/noise_suggestions → Top noisy patterns and simulated reduction
+
+----------------------------------------
+Judge-Friendly Talking Points
+----------------------------------------
+- “Attack Storyboard turns logs into a narrative the owner can understand in seconds.”
+- “Evidence Pack produces all the artifacts you’d send to insurers and regulators—one click.”
+- “Noise-Kill gives you safe, specific tuning suggestions to reduce noise without hiding the real threats.”
+- “Everything works offline; optional AI polish costs exactly one request when you choose it.”
