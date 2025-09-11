@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOAR-Lite Dashboard</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .severity-badge {
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .alert-row:hover {
+            background-color: #f8f9fa;
+            cursor: pointer;
+        }
+        .stats-card {
+            transition: transform 0.2s;
+        }
+        .stats-card:hover {
+            transform: translateY(-2px);
+        }
+        .navbar-brand {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('dashboard') }}">
+                <i class="fas fa-shield-alt"></i> SOAR-Lite Dashboard
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="{{ url_for('upload_file') }}">
+                    <i class="fas fa-upload"></i> Upload Alerts
+                </a>
+                <a class="nav-link" href="{{ url_for('actions_page') }}">
+                    <i class="fas fa-bolt"></i> Actions
+                </a>
+                {% if total_alerts > 0 %}
+                <a class="nav-link" href="{{ url_for('clear_alerts') }}" onclick="return confirm('Are you sure you want to clear all alerts?')">
+                    <i class="fas fa-trash"></i> Clear All
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else 'success' if category == 'success' else 'info' }} alert-dismissible fade show">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Statistics Cards -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card stats-card bg-primary text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="card-title">Total Alerts</h6>
+                                <h3 class="mb-0">{{ total_alerts }}</h3>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-exclamation-triangle fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card bg-danger text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="card-title">Critical</h6>
+                                <h3 class="mb-0">{{ alerts|selectattr('classification.severity', 'equalto', 'Critical')|list|length }}</h3>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-fire fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card bg-warning text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="card-title">High</h6>
+                                <h3 class="mb-0">{{ alerts|selectattr('classification.severity', 'equalto', 'High')|list|length }}</h3>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-exclamation fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card bg-info text-white">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h6 class="card-title">Medium/Low</h6>
+                                <h3 class="mb-0">{{ total_alerts - alerts|selectattr('classification.severity', 'equalto', 'Critical')|list|length - alerts|selectattr('classification.severity', 'equalto', 'High')|list|length }}</h3>
+                            </div>
+                            <div class="align-self-center">
+                                <i class="fas fa-info-circle fa-2x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alerts Table -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-list"></i> Security Alerts
+                    {% if total_alerts > 0 %}
+                        <span class="badge bg-secondary">{{ total_alerts }}</span>
+                    {% endif %}
+                </h5>
+            </div>
+            <div class="card-body p-0">
+                {% if alerts %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Timestamp</th>
+                                    <th>Source IP</th>
+                                    <th>Agent</th>
+                                    <th>Rule Description</th>
+                                    <th>Level</th>
+                                    <th>Classification</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for alert in alerts %}
+                                <tr class="alert-row" role="button" data-url="{{ url_for('alert_detail', alert_id=alert.id) }}">
+                                    <td><strong>#{{ alert.id }}</strong></td>
+                                    <td>{{ alert.timestamp }}</td>
+                                    <td>
+                                        <code>{{ alert.source_ip }}</code>
+                                    </td>
+                                    <td>{{ alert.agent }}</td>
+                                    <td>{{ alert.rule_description[:80] }}{% if alert.rule_description|length > 80 %}...{% endif %}</td>
+                                    <td>
+                                        <span class="badge bg-{% if alert.rule_level >= 10 %}danger{% elif alert.rule_level >= 7 %}warning{% elif alert.rule_level >= 5 %}info{% else %}secondary{% endif %}">
+                                            {{ alert.rule_level }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{ alert.classification.color }} severity-badge">
+                                            {{ alert.classification.severity }} - {{ alert.classification.type }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <a href="{{ url_for('alert_detail', alert_id=alert.id) }}" class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation()">
+                                            <i class="fas fa-eye"></i> Details
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">No Alerts Loaded</h5>
+                        <p class="text-muted">Upload a Wazuh JSON file to get started</p>
+                        <a href="{{ url_for('upload_file') }}" class="btn btn-primary">
+                            <i class="fas fa-upload"></i> Upload Alerts
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.querySelectorAll('.alert-row').forEach(function(row){
+            row.addEventListener('click', function(){
+                var url = this.getAttribute('data-url');
+                if (url) { window.location.href = url; }
+            });
+        });
+    </script>
+</body>
+</html>

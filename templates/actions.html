@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Actions - SOAR-Lite</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('dashboard') }}">
+                <i class="fas fa-shield-alt"></i> SOAR-Lite Dashboard
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="{{ url_for('upload_file') }}">
+                    <i class="fas fa-upload"></i> Upload Alerts
+                </a>
+                <a class="nav-link active" aria-current="page" href="#">
+                    <i class="fas fa-bolt"></i> Actions
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else 'success' if category == 'success' else 'info' }} alert-dismissible fade show">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <!--
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-bolt"></i> Generate Playbook</h5>
+                <span class="badge bg-secondary">Loaded alerts: {{ total_alerts }}</span>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Use Gemini to generate an incident response playbook from the currently loaded Wazuh alerts.</p>
+                <button id="gen-btn" class="btn btn-primary" {% if total_alerts == 0 %}disabled{% endif %}>
+                    <i class="fas fa-magic"></i> Generate Playbook
+                </button>
+
+                <div id="result" class="mt-4" style="display:none;">
+                    <h6>Playbook</h6>
+                    <pre class="bg-light p-3 rounded"><code id="result-json"></code></pre>
+                </div>
+            </div>
+        </div>
+        -->
+        
+        <div class="card mt-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-bolt"></i> Generate Playbook</h5>
+            </div>
+            <div class="card-body">
+                <form id="gemini-form" class="row g-3">
+                    <div class="col-12">
+                        <label for="connect" class="form-label">Does your organization allow the alerts to be read by Gemini?</label>     
+                        <select id="connect" name="connect" class="form-select">
+                            <option value="yes" selected>Yes</option>
+                            <option value="no">No</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="region" class="form-label">Region / Jurisdiction</label>
+                        <select id="region" name="region" class="form-select">
+                            <option value="EU">EU</option>
+                            <option value="North America">North America</option>
+                            <option value="South America">South America</option>
+                            <option value="Asia">Asia</option>
+                            <option value="Asia-Pacific" selected>Asia-Pacific</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="industry" class="form-label">Industry Sector</label>
+                        <select id="industry" name="industry" class="form-select">
+                            <option value="Finance">Finance</option>
+                            <option value="Healthcare">Healthcare</option>
+                            <option value="Retail">Retail</option>
+                            <option value="Tech">Tech</option>
+                            <option value="Other" selected>Other</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="role" class="form-label">Role in Company</label>
+                        <select id="role" name="role" class="form-select">
+                            <option value="Employee" selected>Employee</option>
+                            <option value="Manager">Manager</option>
+                            <option value="IT/Admin">IT/Admin</option>
+                            <option value="Executive">Executive</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="critical" class="form-label">Is the system business-critical?</label>
+                        <select id="critical" name="critical" class="form-select">
+                            <option value="yes">Yes</option>
+                            <option value="no" selected>No</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="has_team" class="form-label">Internal IT/Security team available?</label>
+                        <select id="has_team" name="has_team" class="form-select">
+                            <option value="yes" selected>Yes</option>
+                            <option value="no">No</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label for="content" class="form-label">Your Content</label>
+                        <textarea id="content" name="content" class="form-control" rows="6" placeholder="Paste or type the answers to your questions here..."></textarea>
+                    </div>
+                    <div class="col-12 d-flex gap-2">
+                        <button type="submit" class="btn btn-success" id="submit-gemini">
+                            <i class="fas fa-magic"></i> Generate Playbook
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" id="clear-gemini">
+                            <i class="fas fa-eraser"></i> Clear
+                        </button>
+                    </div>
+                </form>
+
+                <div id="gemini-result" class="mt-4" style="display:none;">
+                    <h6>Result</h6>
+                    <div id="gemini-alert" class="alert d-none" role="alert"></div>
+                    <pre class="bg-light p-3 rounded"><code id="gemini-result-json"></code></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const btn = document.getElementById('gen-btn');
+        const resultBox = document.getElementById('result');
+        const resultJson = document.getElementById('result-json');
+
+        if (btn) {
+            btn.addEventListener('click', async () => {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+                try {
+                    const res = await fetch("{{ url_for('api_generate_playbook') }}", { method: 'POST' });
+                    const data = await res.json();
+                    resultBox.style.display = 'block';
+                    resultJson.textContent = JSON.stringify(data, null, 2);
+                } catch (e) {
+                    resultBox.style.display = 'block';
+                    resultJson.textContent = JSON.stringify({ error: 'Failed to generate playbook', detail: String(e) }, null, 2);
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-magic"></i> Generate Playbook';
+                }
+            });
+        }
+
+        // New form logic for conditional Gemini submission
+        const geminiForm = document.getElementById('gemini-form');
+        const connectSel = document.getElementById('connect');
+        const contentEl = document.getElementById('content');
+        const regionEl = document.getElementById('region');
+        const industryEl = document.getElementById('industry');
+        const roleEl = document.getElementById('role');
+        const criticalEl = document.getElementById('critical');
+        const hasTeamEl = document.getElementById('has_team');
+        const geminiResult = document.getElementById('gemini-result');
+        const geminiAlert = document.getElementById('gemini-alert');
+        const geminiResultJson = document.getElementById('gemini-result-json');
+        const clearBtn = document.getElementById('clear-gemini');
+
+        function showAlert(message, type = 'info') {
+            geminiAlert.className = `alert alert-${type}`;
+            geminiAlert.textContent = message;
+            geminiAlert.classList.remove('d-none');
+        }
+
+        function showResult(obj) {
+            geminiResult.style.display = 'block';
+            geminiResultJson.textContent = JSON.stringify(obj, null, 2);
+        }
+
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                contentEl.value = '';
+                geminiResult.style.display = 'none';
+                geminiAlert.classList.add('d-none');
+                geminiResultJson.textContent = '';
+            });
+        }
+
+        if (geminiForm) {
+            geminiForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                geminiAlert.classList.add('d-none');
+                geminiResultJson.textContent = '';
+
+                const payload = {
+                    connect: connectSel.value,
+                    content: contentEl.value,
+                    region: regionEl.value,
+                    industry: industryEl.value,
+                    role: roleEl.value,
+                    critical: criticalEl.value,
+                    has_team: hasTeamEl.value
+                };
+
+                // If user selected "no", do not call backend; just show alert and echo
+                if (payload.connect === 'no') {
+                    geminiResult.style.display = 'block';
+                    showAlert('You selected No. Skipping Gemini call.', 'warning');
+                    showResult({ skipped: true, echo: { content: payload.content } });
+                    return;
+                }
+
+                // Otherwise call backend to reach Gemini
+                const submitBtn = document.getElementById('submit-gemini');
+                submitBtn.disabled = true;
+                const original = submitBtn.innerHTML;
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+                try {
+                    const res = await fetch("{{ url_for('api_ask_gemini') }}", {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    geminiResult.style.display = 'block';
+                    if (!res.ok) {
+                        showAlert(data.error || 'Request failed', 'danger');
+                    } else {
+                        showAlert('Gemini response received.', 'success');
+                    }
+                    showResult(data);
+                } catch (err) {
+                    geminiResult.style.display = 'block';
+                    showAlert('Network error while contacting backend.', 'danger');
+                    showResult({ error: String(err) });
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = original;
+                }
+            });
+        }
+    </script>
+</body>
+</html>
+

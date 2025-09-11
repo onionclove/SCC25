@@ -1,0 +1,200 @@
+[
+  {
+    "timestamp": "2023-10-27T14:23:18.123Z",
+    "rule": {
+      "level": 12,
+      "description": "Web shell uploaded and executed",
+      "id": "100102",
+      "firedtimes": 1,
+      "mail": false,
+      "groups": ["web", "attacks", "correlation"],
+      "pci_dss": ["11.5"],
+      "gpg13": ["4.8"],
+      "gdpr": ["IV_35.7.d"],
+      "mitre": {
+        "id": ["T1505.003"],
+        "technique": ["Server Software Component: Web Shell"],
+        "tactic": ["Persistence", "Command and Control"]
+      }
+    },
+    "agent": {
+      "id": "005",
+      "name": "prod-web-server-01",
+      "ip": "192.168.1.50"
+    },
+    "manager": {
+      "name": "wazuh-server"
+    },
+    "id": "1698416598.123456",
+    "cluster": {
+      "name": "wazuh-cluster",
+      "node": "wazuh-worker-01"
+    },
+    "full_log": "Oct 27 14:23:18 prod-web-server-01 ossec: Alert Level: 12; Rule: 100102 - Web shell uploaded and executed; Location: (prod-web-server-01) any->/var/www/html/uploads/cmd.php; srcip: 198.51.100.23; user: www-data; process: apache2; Previous alert: File added to the webserver (Rule 554).",
+    "decoder": {
+      "name": "syslog"
+    },
+    "data": {
+      "srcip": "198.51.100.23",
+      "srcuser": "attacker_john",
+      "dstuser": "www-data",
+      "process": {
+        "name": "apache2",
+        "pid": "34521",
+        "parent": null
+      },
+      "file": {
+        "path": "/var/www/html/uploads/cmd.php",
+        "size": "4096",
+        "gid": "33",
+        "uid": "33",
+        "perm": "rw-r--r--",
+        "md5": "5eb63bbbe01eeed093cb22bb8f5acdc3",
+        "sha1": "2aae6c35c94fcfb415dbe95f408b9ce91ee846ed",
+        "sha256": "c3ab8ff13720e8ad9047dd39466b3c8974e592c2fa383d4a3960714caef0c4f2"
+      },
+      "url": "/uploads/cmd.php?cmd=whoami",
+      "alert_id": "1698416598.123456",
+      "correlation_alert": {
+        "id": "1698416597.987654",
+        "title": "File added to the webserver"
+      }
+    },
+    "location": "prod-web-server-01->/var/www/html/uploads/cmd.php",
+    "predecoder": {
+      "program_name": "ossec",
+      "hostname": "prod-web-server-01",
+      "timestamp": "Oct 27 14:23:18"
+    }
+  },
+  {
+    "timestamp": "2023-10-27T15:45:22.456Z",
+    "rule": {
+      "level": 7,
+      "description": "SSH login from a new geolocation.",
+      "id": "100201",
+      "groups": ["authentication_success", "sshd", "pci_dss_10.2.5"]
+    },
+    "agent": {
+      "id": "010",
+      "name": "db-server-02"
+    },
+    "data": {
+      "srcip": "95.179.210.227",
+      "dstuser": "admin",
+      "geoip": {
+        "country_name": "Germany",
+        "country_code": "DE",
+        "region_name": "Hesse",
+        "city": "Frankfurt am Main",
+        "latitude": 50.1109,
+        "longitude": 8.6821
+      },
+      "login_type": "password",
+      "alert_id": "1698416722.456789"
+    },
+    "location": "db-server-02->/var/log/secure"
+  },
+  {
+    "timestamp": "2023-10-27T16:10:05.789Z",
+    "rule": {
+      "level": 10,
+      "description": "AWS API call denied due to permissions.",
+      "id": "100302",
+      "groups": ["aws", "cloudtrail", "authentication_failed"]
+    },
+    "manager": {
+      "name": "wazuh-server"
+    },
+    "data": {
+      "aws": {
+        "cloudTrailEvent": {
+          "eventSource": "iam.amazonaws.com",
+          "eventName": "DeleteUser",
+          "awsRegion": "us-east-1",
+          "sourceIPAddress": "73.223.184.101",
+          "userAgent": "aws-cli/2.0.0",
+          "errorCode": "AccessDenied",
+          "errorMessage": "User: arn:aws:iam::123456789012:user/DevUser is not authorized to perform: iam:DeleteUser on resource: user Bob",
+          "requestParameters": {
+            "userName": "Bob"
+          },
+          "userIdentity": {
+            "type": "IAMUser",
+            "arn": "arn:aws:iam::123456789012:user/DevUser",
+            "userName": "DevUser"
+          }
+        }
+      },
+      "integration": "aws",
+      "alert_id": "1698417605.789123"
+    },
+    "location": "aws-cloudtrail"
+  },
+  {
+    "timestamp": "2023-10-27T09:15:30.001Z",
+    "rule": {
+      "level": 8,
+      "description": "CVE-2023-29405 detected on package 'python-urllib3'.",
+      "id": "100405",
+      "groups": ["vulnerability_detector"]
+    },
+    "agent": {
+      "id": "005",
+      "name": "prod-web-server-01"
+    },
+    "data": {
+      "vulnerability": {
+        "cve": "CVE-2023-29405",
+        "cvss": {
+          "score": "7.5",
+          "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+        },
+        "severity": "High",
+        "package": {
+          "name": "python-urllib3",
+          "version": "1.26.4",
+          "fixed_version": "1.26.5"
+        },
+        "published": "2023-03-27",
+        "link": "https://nvd.nist.gov/vuln/detail/CVE-2023-29405",
+        "description": "A vulnerability in urllib3 could allow for inefficient regular expression complexity, leading to a denial-of-service."
+      },
+      "scan_id": "vd_syscollector_005_1698383730",
+      "alert_id": "1698398130.001234"
+    },
+    "location": "prod-web-server-01"
+  },
+  {
+    "timestamp": "2023-10-27T17:55:44.321Z",
+    "rule": {
+      "level": 10,
+      "description": "Docker container started in privileged mode.",
+      "id": "100508",
+      "groups": ["docker", "security"]
+    },
+    "agent": {
+      "id": "007",
+      "name": "docker-host-01"
+    },
+    "data": {
+      "docker": {
+        "type": "container",
+        "action": "start",
+        "actor": {
+          "attributes": {
+            "image": "alpine:latest",
+            "name": "suspicious_container",
+            "privileged": "true"
+          }
+        }
+      },
+      "srcip": "172.17.0.1",
+      "process": {
+        "name": "dockerd"
+      },
+      "alert_id": "1698422144.321987"
+    },
+    "location": "docker-host-01->/var/run/docker.sock"
+  }
+]
