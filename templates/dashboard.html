@@ -157,6 +157,7 @@
                                     <td>{{ alert.timestamp }}</td>
                                     <td>
                                         <code>{{ alert.source_ip }}</code>
+                                        <span id="vt-badge-{{ alert.id }}" class="ms-2"></span>
                                     </td>
                                     <td>{{ alert.agent }}</td>
                                     <td>{{ alert.rule_description[:80] }}{% if alert.rule_description|length > 80 %}...{% endif %}</td>
@@ -202,6 +203,37 @@
                 if (url) { window.location.href = url; }
             });
         });
+
+        // Fetch VirusTotal reputation for each row's source IP and render badge
+        (function initVirusTotalBadges(){
+            const rows = document.querySelectorAll('tbody tr.alert-row');
+            rows.forEach(function(row){
+                try {
+                    const idCell = row.querySelector('td:first-child');
+                    const idText = idCell ? idCell.textContent.trim() : '';
+                    const alertId = parseInt(idText.replace('#',''));
+                    const ipCode = row.querySelector('td:nth-child(3) code');
+                    const ip = ipCode ? ipCode.textContent.trim() : '';
+                    const badgeEl = row.querySelector(`#vt-badge-${alertId}`);
+                    if (!ip || ip.toLowerCase() === 'unknown' || !badgeEl) return;
+                    fetch(`${window.location.origin}/api/virustotal/${alertId}/ip/${encodeURIComponent(ip)}`)
+                        .then(r => r.ok ? r.json() : null)
+                        .then(data => {
+                            if (!data) return;
+                            const rep = (data.reputation || 'unknown').toLowerCase();
+                            let cls = 'bg-secondary';
+                            if (rep === 'malicious') cls = 'bg-danger';
+                            else if (rep === 'suspicious') cls = 'bg-warning text-dark';
+                            else if (rep === 'clean') cls = 'bg-success';
+                            badgeEl.className = `badge ${cls}`;
+                            const mal = data.malicious != null ? `, M:${data.malicious}` : '';
+                            const sus = data.suspicious != null ? ` S:${data.suspicious}` : '';
+                            badgeEl.textContent = `VT: ${rep}${mal}${sus}`;
+                        })
+                        .catch(() => {});
+                } catch (e) { /* noop */ }
+            });
+        })();
     </script>
 </body>
 </html>

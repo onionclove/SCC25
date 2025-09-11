@@ -52,32 +52,65 @@ def init_gemini_client():
         return None
 
 def build_playbook_prompt(alerts_subset):
-    """Create a structured prompt for Gemini to generate an incident response playbook.
-
-    The model should output concise, ordered steps with rationale, severity, owners, and checks.
+    """Create a structured prompt for Gemini to generate a DUAL-FORMAT incident response output.
+    
+    Generates a human-readable guide for SMEs and a technical JSON playbook for IT.
+    The model will output both a clear Markdown document and a structured JSON playbook.
     """
     sample = {
-        "context": "You are a SOC runbook assistant. Generate a practical, step-by-step incident response playbook for the provided Wazuh alerts. Be concise and actionable.",
+        "context": "You are a Senior Cybersecurity Incident Commander. You must analyze the provided Wazuh alerts and generate TWO SEPARATE, DISTINCT outputs. Your first priority is a clear, calming guide for a non-technical business owner. Your second output is a technical playbook for an IT team. YOU MUST FOLLOW THE OUTPUT FORMAT EXACTLY.",
         "output_format": {
-            "title": "string",
-            "summary": "3-5 bullet overview",
-            "severity": "Low|Medium|High|Critical",
-            "assumptions": ["short bullets"],
-            "prerequisites": ["tools, accesses, data needed"],
-            "playbook_steps": [
-                {"id": 1, "name": "Step name", "owner": "SOC|IR|IT", "goal": "what it achieves", "commands": ["example commands"], "evidence_to_collect": ["artifacts"], "success_criteria": ["verifications"], "rollback": ["if needed"], "estimated_time_min": 5}
-            ],
-            "containment_actions": ["bullets"],
-            "eradication_actions": ["bullets"],
-            "recovery_actions": ["bullets"],
-            "post_incident": ["lessons learned, tuning"]
+            "human_guide_markdown": "# Incident Response Guide: [Title]\n\n## 🚨 What's Happening?\n* **Alert Severity:** [Level]\n* **In Simple Terms:** [Plain English explanation]\n\n## 🤔 Why Should You Care?\n* **What This Protects:** [Business impact explanation]\n\n## 📋 Your Immediate Action Plan\n1. **Step 1: [Action]**\n   * **What to do:** [Instruction]\n   * **Why & What it protects:** [Rationale for peace of mind]\n2. **Step 2: [Action]**\n   * **What to do:** [Instruction]\n   * **Why & What it protects:** [Rationale]\n\n## 🔧 For Your IT Pro (What We Found)\n* **Technical Summary:** [Brief technical details from alert data]\n* **Key Evidence:** [IPs, Users, Timestamps from alert]",
+            "technical_playbook_json": {
+                "title": "string",
+                "summary": ["bullet points"],
+                "severity": "Low|Medium|High|Critical",
+                "assumptions": ["short bullets"],
+                "prerequisites": ["tools, accesses, data needed"],
+                "playbook_steps": [
+                    {"id": 1, "name": "Step name", "owner": "SOC|IR|IT", "goal": "what it achieves", "commands": ["example commands"], "evidence_to_collect": ["artifacts"], "success_criteria": ["verifications"], "rollback": ["if needed"], "estimated_time_min": 5}
+                ],
+                "containment_actions": ["bullets"],
+                "eradication_actions": ["bullets"],
+                "recovery_actions": ["bullets"],
+                "post_incident": ["lessons learned, tuning"]
+            }
         }
     }
     return (
-        "Generate a JSON playbook for these Wazuh alerts. Consider rule.level, rule.description, rule.groups, timestamps, IPs, users. "
-        "Prefer concrete Linux/Windows commands when relevant. Keep steps minimal but complete."
-        f"\n\nAlerts JSON (truncated to 25):\n{json.dumps(alerts_subset, indent=2) }\n\n"
-        f"Respond ONLY with JSON following this schema (no markdown fences):\n{json.dumps(sample['output_format'], indent=2)}"
+        "**CRITICAL INSTRUCTION: YOU MUST GENERATE TWO SEPARATE OUTPUTS. DO NOT MIX THEM. YOUR RESPONSE MUST CONTAIN THE TWO SECTIONS DEMARCATED BY '---BEGIN HUMAN GUIDE---' AND '---BEGIN TECHNICAL PLAYBOOK---'.**\n"
+        "\n"
+        "**THINKING PROCESS:**\n"
+        "1.  First, analyze the Wazuh alerts to understand the technical severity and root cause.\n"
+        "2.  Second, translate this into a simple, actionable plan for a non-technical business owner. Focus on 'what to do' and 'why'.\n"
+        "3.  Third, create a detailed technical playbook for an IT team based on the same analysis.\n"
+        "4.  Finally, output both results in the required formats.\n"
+        "\n"
+        "**HUMAN GUIDE (For SME):**\n"
+        "- **Tone:** Empathetic, reassuring, and directive. Avoid fear-mongering.\n"
+        "- **Language:** ZERO jargon. Use simple analogies (e.g., 'This is like a burglar checking your door locks').\n"
+        "- **Content:** Provide a numbered, step-by-step action plan. For each step, include:\n"
+        "    - **What to do:** A clear, imperative instruction.\n"
+        "    - **Why & What it protects:** A one-sentence plain-English rationale (e.g., 'This stops the infection from spreading to other computers and protects your customer data.').\n"
+        "- **Output Format:** Write this guide in Markdown, following the structure below.\n"
+        "\n"
+        "**TECHNICAL PLAYBOOK (For IT):**\n"
+        "- **Precision:** Be technically specific. Use data from the alerts: `rule.description`, `rule.level`, `rule.groups`, `srcip`, `user`.\n"
+        "- **Commands:** Include concrete OS commands (Linux/Windows) for investigation and remediation.\n"
+        "- **Output Format:** Output a JSON object that strictly follows the schema below.\n"
+        "\n"
+        "**YOU MUST NOT OUTPUT A SINGLE BLOCK OF TEXT. YOU MUST USE THE FOLLOWING FORMAT:**\n"
+        "\n"
+        "---BEGIN HUMAN GUIDE---\n"
+        "# Incident Response Guide: [Clear Title Based on the Primary Threat]\n\n... [Your complete Markdown guide here] ...\n"
+        "---END HUMAN GUIDE---\n"
+        "\n"
+        "---BEGIN TECHNICAL PLAYBOOK---\n"
+        "{\n  \"title\": \"...\",\n  \"summary\": [\"...\"],\n  ... [Your complete JSON playbook here] ...\n}\n"
+        "---END TECHNICAL PLAYBOOK---\n"
+        "\n"
+        "**ALERTS TO ANALYZE:**\n"
+        f"{json.dumps(alerts_subset, indent=2)}"
     )
 
 def generate_playbook_from_alerts(all_alerts):
