@@ -344,77 +344,27 @@ def vt_get_hash_report(file_hash):
     
     return None
 
-def classify_alert(alert_data):
+def classify_alert_data(alert):
     """
-    Classify alerts based on simple rules.
-    
-    Args:
-        alert_data (dict): Single Wazuh alert data
-    
-    Returns:
-        dict: Classification with severity and type
+    Classify an alert dictionary into severity and type.
+    Returns a dict like {"severity": "...", "classification": "..."}
     """
-    classification = {
-        'severity': 'Low',
-        'type': 'Information',
-        'color': 'success'
-    }
-    
-    try:
-        rule_level = alert_data.get('rule', {}).get('level', 0)
-        rule_groups = alert_data.get('rule', {}).get('groups', [])
-        rule_description = alert_data.get('rule', {}).get('description', '').lower()
-        
-        # High severity classification
-        if rule_level >= 10:
-            classification.update({
-                'severity': 'Critical',
-                'type': 'Critical Threat',
-                'color': 'danger'
-            })
-        elif rule_level >= 7:
-            classification.update({
-                'severity': 'High',
-                'type': 'Suspicious Activity',
-                'color': 'warning'
-            })
-        elif rule_level >= 5:
-            classification.update({
-                'severity': 'Medium',
-                'type': 'Potential Issue',
-                'color': 'info'
-            })
-        
-        # Specific threat type classification
-        if 'authentication_failed' in rule_groups or 'authentication_failures' in rule_groups:
-            classification.update({
-                'type': 'Potential Bruteforce',
-                'color': 'warning' if classification['severity'] == 'Low' else classification['color']
-            })
-        
-        if 'web' in rule_groups and rule_level >= 6:
-            classification.update({
-                'type': 'Web Attack',
-                'color': 'danger'
-            })
-        
-        if 'malware' in rule_groups:
-            classification.update({
-                'severity': 'Critical',
-                'type': 'Malware Detected',
-                'color': 'danger'
-            })
-        
-        if 'rootcheck' in rule_groups or 'policy_monitoring' in rule_groups:
-            classification.update({
-                'type': 'Policy Violation',
-                'color': 'warning'
-            })
-        
-    except Exception as e:
-        print(f"Error classifying alert: {e}")
-    
-    return classification
+    # Transform alert into the expected 'answers' structure if needed
+    answers = alert.get('answers', {}) if isinstance(alert, dict) else alert
+
+    if answers.get('automated_system') == 'yes':
+        if answers.get('malicious_activity') == 'yes':
+            return {"severity": "Critical", "classification": "Incident"}
+        else:
+            return {"severity": "High", "classification": "Alert"}
+    else:
+        if answers.get('assets_affected', 0) > 5:
+            return {"severity": "Critical", "classification": "Incident"}
+        elif answers.get('malicious_activity') == 'no':
+            return {"severity": "Low", "classification": "Event"}
+        else:
+            return {"severity": "Medium", "classification": "Alert"}
+
 
 def enrich_alert(alert_data):
     """
@@ -608,6 +558,22 @@ def parse_timestamp(timestamp_str):
         return timestamp_str
     except:
         return 'Unknown'
+@app.route('/api/classify', methods=['POST'])
+def classify_alert():
+    try:
+        data = request.get_json(force=True, silent=False)
+        if not data:
+            return jsonify({"error": "Invalid or missing JSON input"}), 400
+
+        classification = classify_alert_data(data)
+        return jsonify(classification), 200
+
+    except Exception as e:
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
+    except Exception as e:
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
 @app.route('/api/storyboard', methods=['GET'])
 def api_storyboard():
@@ -826,7 +792,7 @@ def dashboard():
     processed_alerts = []
     
     for i, alert in enumerate(alerts_data):
-        classification = classify_alert(alert)
+        classification = classify_alert_data(alert)
         processed_alert = {
             'id': i,
             'timestamp': parse_timestamp(alert.get('timestamp', '')),
@@ -889,7 +855,7 @@ def alert_detail(alert_id):
         return redirect(url_for('dashboard'))
     
     alert = alerts_data[alert_id]
-    classification = classify_alert(alert)
+    classification = classify_alert_data(alert)
     enrichment = enrich_alert(alert)
     
     # Get source IP for correlation
@@ -942,7 +908,7 @@ def api_stats():
     }
     
     for alert in alerts_data:
-        classification = classify_alert(alert)
+        classification = classify_alert_data(alert)
         severity = classification['severity'].lower()
         if severity == 'critical':
             stats['critical_alerts'] += 1
@@ -952,8 +918,7 @@ def api_stats():
             stats['medium_alerts'] += 1
         else:
             stats['low_alerts'] += 1
-    
-    return jsonify(stats)
+
 
 @app.route('/actions', methods=['GET'])
 def actions_page():
@@ -1082,38 +1047,6 @@ def api_virustotal_lookup(alert_id, observable_type, observable_value):
     
     return jsonify(result) if result else jsonify({'error': 'No VirusTotal data available'}), 404
 
-@app.route('/api/classify', methods=['POST'])
-def classify_alert():
-    """
-    Classify an input based on a decision tree.
-    Expects JSON input with answers to structured questions.
-    """
-    try:
-        data = request.get_json(force=True, silent=False)
-        if not data:
-            return jsonify({"error": "Invalid or missing JSON input"}), 400
-
-        # Decision tree logic
-        def decision_tree(answers):
-            # Example decision tree logic
-            if answers.get('automated_system') == 'yes':
-                if answers.get('malicious_activity') == 'yes':
-                    return "Incident"
-                else:
-                    return "Alert"
-            else:
-                if answers.get('assets_affected', 0) > 5:
-                    return "Incident"
-                elif answers.get('malicious_activity') == 'no':
-                    return "Event"
-                else:
-                    return "Alert"
-
-        classification = decision_tree(data)
-        return jsonify({"classification": classification}), 200
-
-    except Exception as e:
-        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='127.0.0.1', port=5000)
