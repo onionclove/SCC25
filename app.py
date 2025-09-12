@@ -346,24 +346,72 @@ def vt_get_hash_report(file_hash):
 
 def classify_alert_data(alert):
     """
-    Classify an alert dictionary into severity and type.
-    Returns a dict like {"severity": "...", "classification": "..."}
+    Classify a Wazuh alert dictionary into severity and type.
+    Returns a dict like {"severity": "...", "type": "...", "color": "..."}
     """
-    # Transform alert into the expected 'answers' structure if needed
-    answers = alert.get('answers', {}) if isinstance(alert, dict) else alert
-
-    if answers.get('automated_system') == 'yes':
-        if answers.get('malicious_activity') == 'yes':
-            return {"severity": "Critical", "classification": "Incident"}
+    try:
+        # Extract Wazuh alert data
+        rule_level = alert.get('rule', {}).get('level', 0)
+        rule_groups = alert.get('rule', {}).get('groups', [])
+        rule_description = alert.get('rule', {}).get('description', '').lower()
+        
+        # Determine severity based on rule level and context
+        if rule_level >= 12:
+            severity = "Critical"
+            color = "danger"
+            alert_type = "Incident"
+        elif rule_level >= 8:
+            severity = "High" 
+            color = "warning"
+            alert_type = "Alert"
+        elif rule_level >= 5:
+            severity = "Medium"
+            color = "info"
+            alert_type = "Alert"
         else:
-            return {"severity": "High", "classification": "Alert"}
-    else:
-        if answers.get('assets_affected', 0) > 5:
-            return {"severity": "Critical", "classification": "Incident"}
-        elif answers.get('malicious_activity') == 'no':
-            return {"severity": "Low", "classification": "Event"}
-        else:
-            return {"severity": "Medium", "classification": "Alert"}
+            severity = "Low"
+            color = "secondary"
+            alert_type = "Event"
+        
+        # Adjust severity based on rule groups and description
+        critical_keywords = ['attack', 'malware', 'intrusion', 'compromise', 'breach', 'ransomware']
+        high_keywords = ['bruteforce', 'exploit', 'privilege', 'escalation', 'lateral']
+        
+        # Check for critical indicators
+        if any(keyword in rule_description for keyword in critical_keywords):
+            severity = "Critical"
+            color = "danger"
+            alert_type = "Incident"
+        elif any(keyword in rule_description for keyword in high_keywords):
+            if severity == "Low" or severity == "Medium":
+                severity = "High"
+                color = "warning"
+                alert_type = "Alert"
+        
+        # Check rule groups for additional context
+        if 'attack' in rule_groups or 'malware' in rule_groups:
+            severity = "Critical"
+            color = "danger"
+            alert_type = "Incident"
+        elif 'authentication_failed' in rule_groups and rule_level >= 7:
+            if severity != "Critical":
+                severity = "High"
+                color = "warning"
+                alert_type = "Alert"
+        
+        return {
+            "severity": severity,
+            "type": alert_type,
+            "color": color
+        }
+        
+    except Exception as e:
+        print(f"Error classifying alert: {e}")
+        return {
+            "severity": "Low",
+            "type": "Event", 
+            "color": "secondary"
+        }
 
 
 def enrich_alert(alert_data):
@@ -565,12 +613,30 @@ def classify_alert():
         if not data:
             return jsonify({"error": "Invalid or missing JSON input"}), 400
 
-        classification = classify_alert_data(data)
+        # Handle both Wazuh alerts and questionnaire-style inputs
+        if 'answers' in data:
+            # Legacy questionnaire format - convert to Wazuh-like structure
+            answers = data['answers']
+            mock_alert = {
+                'rule': {
+                    'level': 8 if answers.get('automated_system') == 'yes' else 5,
+                    'description': 'User classification input',
+                    'groups': ['user_input']
+                }
+            }
+            if answers.get('malicious_activity') == 'yes':
+                mock_alert['rule']['groups'].append('attack')
+                mock_alert['rule']['level'] = 12
+            if answers.get('assets_affected', 0) > 5:
+                mock_alert['rule']['level'] = 12
+                mock_alert['rule']['groups'].append('attack')
+            
+            classification = classify_alert_data(mock_alert)
+        else:
+            # Direct Wazuh alert format
+            classification = classify_alert_data(data)
+        
         return jsonify(classification), 200
-
-    except Exception as e:
-        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
-
 
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
@@ -723,7 +789,7 @@ def api_evidence_pack():
         # summary.txt
         counts = {"total": len(alerts_data), "critical": 0, "high": 0, "medium": 0, "low": 0}
         for a in alerts_data:
-            sev = classify_alert(a)['severity'].lower()
+            sev = classify_alert_data(a)['severity'].lower()
             if sev in counts:
                 counts[sev] += 1
         z.writestr('summary.txt', "\n".join([f"{k}: {v}" for k, v in counts.items()]))
@@ -753,7 +819,7 @@ def api_noise_suggestions():
         counts[k] += 1
         if k not in examples:
             examples[k] = i
-        severities[k].append(classify_alert(a)['severity'])
+        severities[k].append(classify_alert_data(a)['severity'])
 
     def score(k, c):
         sev = severities[k]
@@ -918,6 +984,8 @@ def api_stats():
             stats['medium_alerts'] += 1
         else:
             stats['low_alerts'] += 1
+    
+    return jsonify(stats), 200
 
 
 @app.route('/actions', methods=['GET'])
