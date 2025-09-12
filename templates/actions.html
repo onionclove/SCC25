@@ -494,7 +494,13 @@
                     classificationAlert.textContent = data.error || 'Classification failed.';
                 } else {
                     classificationAlert.className = 'alert alert-success';
-                    classificationAlert.textContent = `Classification: ${data.classification}`;
+                    const classification = data.severity || data.classification?.severity || 'Unknown';
+                    const type = data.type || data.classification?.type || 'Unknown';
+                    const color = data.color || data.classification?.color || 'secondary';
+                    classificationAlert.innerHTML = `
+                        <strong>Classification:</strong> 
+                        <span class="badge bg-${color}">${classification} - ${type}</span>
+                    `;
                 }
                 classificationAlert.classList.remove('d-none');
                 classificationResult.style.display = 'block';

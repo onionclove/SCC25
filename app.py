@@ -741,7 +741,7 @@ def api_evidence_pack():
     actions_audit = body.get('actions_audit', {})
     storyboard = body.get('storyboard')
 
-    from io import BytesIO
+    from io import BytesIO, StringIO
     import zipfile, csv
 
     mem = BytesIO()
@@ -750,8 +750,8 @@ def api_evidence_pack():
         z.writestr('alerts.json', json.dumps(alerts_data, indent=2))
 
         # correlated.csv
-        csv_bytes = BytesIO()
-        writer = csv.writer(csv_bytes)
+        csv_text = StringIO(newline='')
+        writer = csv.writer(csv_text)
         writer.writerow(['source_ip', 'alert_id', 'timestamp', 'rule_description', 'rule_level'])
         for i, a in enumerate(alerts_data):
             writer.writerow([
@@ -761,14 +761,15 @@ def api_evidence_pack():
                 a.get('rule', {}).get('description', ''),
                 a.get('rule', {}).get('level', 0)
             ])
-        z.writestr('correlated.csv', csv_bytes.getvalue().decode('utf-8', errors='ignore'))
+        z.writestr('correlated.csv', csv_text.getvalue())
 
         # storyboard.md (generate if not provided)
         if not storyboard:
             # Compute a minimal storyboard locally
             # Reuse function above by direct call
             try:
-                sb_frames = api_storyboard().json  # type: ignore
+                resp = api_storyboard()
+                sb_frames = getattr(resp, 'get_json', lambda **kwargs: None)(silent=True) or {"frames": []}
             except Exception:
                 sb_frames = {"frames": []}
             storyboard = sb_frames
